@@ -1,0 +1,48 @@
+name: One-off cmux top-tabs macOS build
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - name: Check out feature branch with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Confirm intended source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = '0e930f9c1ba1d90d75faf4cffc535218a75282f6' || { echo 'Wrong source revision'; exit 1; }
+          xcodebuild -version
+          git status --short
+      - name: Install Zig
+        run: brew install zig
+      - name: Set up dependencies
+        run: ./scripts/setup.sh
+      - name: Build tagged development app
+        env:
+          CMUX_SKIP_ZIG_BUILD: '1'
+        run: ./scripts/reload.sh --tag issue-1362-top-tabs
+      - name: Package app bundle
+        run: |
+          set -euo pipefail
+          app="$HOME/Library/Developer/Xcode/DerivedData/cmux-issue-1362-top-tabs/Build/Products/Debug/cmux DEV issue-1362-top-tabs.app"
+          test -d "$app"
+          test -x "$app/Contents/MacOS/cmux DEV"
+          ditto -c -k --sequesterRsrc --keepParent "$app" cmux-top-tabs-0e930f9-macos.zip
+          shasum -a 256 cmux-top-tabs-0e930f9-macos.zip > SHA256SUMS
+          ls -lh cmux-top-tabs-0e930f9-macos.zip
+      - name: Upload app archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmux-top-tabs-0e930f9-macos
+          path: |
+            cmux-top-tabs-0e930f9-macos.zip
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
